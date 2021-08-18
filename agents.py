@@ -1,4 +1,5 @@
-import math
+import os
+from typing import List
 import tqdm
 import numpy as np
 import threading
@@ -78,35 +79,43 @@ class QLearningAgent(threading.Thread):
             value + self.lr * (reward + self.gamma * np.max(values_) - value)
         )
     
+    def run_episode(self, i_episode):
+        if hasattr(self, "assistants") and self.assistants is not None:
+            for assist in self.assistants:
+                assist.run_episode(i_episode)
+        state = self.env.reset()
+        sum_real_reward = 0
+        n_steps = 0
+        while True:
+            if self.render == True or (i_episode >= self.render and self.render != False):
+                self.env.render()
+            action = self.action(state, random=self.training)
+            state_, real_reward, done, _ = self.env.step(action)
+            sum_real_reward += real_reward
+            if self.training:
+                reward = real_reward / 2 + self.shaping(state_, state)
+                # reward = self.shaping(state_, state)
+                self.learn(state, action, reward, state_)
+            state = state_
+            n_steps += 1
+            if done or n_steps == 200:
+                return sum_real_reward
+
     def run(self):
         real_rewards = []
+        os.makedirs("rewards", exist_ok=True)
         pbar = tqdm.tqdm(total=self.episodes)
         for i_episode in range(self.episodes):
-            state = self.env.reset()
-            sum_real_reward = 0
-            n_steps = 0
-            while True:
-                if self.render == True or (i_episode >= self.render and self.render != False):
-                    self.env.render()
-                action = self.action(state, random=self.training)
-                state_, real_reward, done, _ = self.env.step(action)
-                sum_real_reward += real_reward
-                if self.training:
-                    reward = real_reward + self.shaping(state_, state)
-                    self.learn(state, action, reward, state_)
-                state = state_
-                n_steps += 1
-                if done:
-                    real_rewards.append(sum_real_reward)
-                    pbar.set_description(f"agent_name:{self.name}, episode: {i_episode}, real_reward: {sum_real_reward}, n_steps: {n_steps}")
-                    break
+            sum_reward = self.run_episode(i_episode)
+            real_rewards.append(sum_reward)
             pbar.update()
             if i_episode > 0 and i_episode % 100 == 0:
-                np.save(f"rewards.{self.name}{'' if self.training else '-test'}.npy", np.array(real_rewards))
+                np.save(f"rewards/rewards.{self.name}{'' if self.training else '-test'}.npy", np.array(real_rewards))
                 self.save()
 
     def save(self):
-        np.save(f"Q.{self.name}.npy", np.array(self.Q))
+        os.makedirs("q_tables", exist_ok=True)
+        np.save(f"q_tables/Q.{self.name}.npy", np.array(self.Q))
 
 
 class MazeAgent(QLearningAgent):
@@ -145,11 +154,12 @@ class MountainCarAgent(QLearningAgent):
                        recover=None,
                        episodes=1000,
                        epsilon=0.01,
-                       gamma=1,
+                       gamma=0.9,
                        lr=1,
                        discrete_num=100,
                        action="epsilon_greedy",
                        shaping="original",
+                       assistants: List[QLearningAgent]=None,
                        training=True,
                        render=False):
         self.discrete_num = discrete_num
@@ -166,13 +176,30 @@ class MountainCarAgent(QLearningAgent):
                          render=render)
         self.pos_range = self.env.max_position - self.env.min_position
         self.vel_range = self.env.max_speed * 2
+        self.assistants = assistants
 
     def shaping_distance(self, state_, state):
         return (state_[0] - state[0]) * self.discrete_num
     
     def shaping_energy(self, state_, state):
-        compute_energy = lambda s: 1/2 * s[1] * s[1] + self.env.gravity * self.env._height(s[0])
+        def compute_energy(s):
+            kinetic = s[1] * s[1] / 0.0098
+            gravity = (self.env._height(s[0]) - 0.1) / 0.9 - 0.5
+            return (kinetic + gravity) / 2
+        # compute_energy = lambda s: 1/2 * s[1] * s[1] + self.env.gravity * self.env._height(s[0])
         return compute_energy(state_) - compute_energy(state)
+    
+    def shaping_co(self, state_, state):
+        assert self.assistants is not None
+        compute_v = lambda avs: np.mean(self.epsilon * avs) + (1 - self.epsilon) * np.max(avs)
+        rs = 0
+        for assist in self.assistants:
+            action_values_ = assist.Q[assist.state_to_index(state_)]
+            action_values = assist.Q[assist.state_to_index(state)]
+            v_ = compute_v(action_values_)
+            v = compute_v(action_values)
+            rs += (v_ - v) / len(self.assistants)
+        return rs + self.shaping_energy(state_, state)
 
     def get_init_q_table(self):
         return np.zeros((self.discrete_num, self.discrete_num, self.env.action_space.n))
