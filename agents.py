@@ -1,11 +1,82 @@
+from shaper import Shaper
+from policy import Policy, QPolicy
+from env_wrapper import EnvWrapper
 import os
 from typing import List
 import tqdm
 import numpy as np
 import threading
 from gym import Env
-from envs import MazeEnv
-from gym.envs.classic_control import MountainCarEnv
+from tensorboardX import SummaryWriter
+from datetime import datetime
+
+
+class Agent(object):
+
+    def __init__(self,
+                 name: str,
+                 env: Env,
+                 env_wrapper: EnvWrapper,
+                 policy: Policy,
+                 shaper: Shaper = None,
+                 gamma=0.9,
+                 lr=1,
+                 render=False):
+        self.name = name
+        self.env = env
+        self.gamma = gamma
+        self.lr = lr
+        self.render = render
+        self.env_wrapper = env_wrapper
+        self.policy = policy
+        self.shaper = shaper
+    
+    def learn(self, state, action, reward, state_):
+        raise NotImplementedError
+    
+    def run_episode(self, i_episode):
+        raise NotImplementedError
+
+
+class QAgent(Agent):
+
+    def _shaping_reward(self, state_, state, i_episode):
+        if self.shaper is not None:
+            return self.shaper.shaping_reward(state_, state, i_episode)
+        return 0
+    
+    def learn(self, state, action, reward, state_):
+        sidx = self.env_wrapper.state_to_index(state)
+        sidx_ = self.env_wrapper.state_to_index(state_)
+        value = self.policy.Q.__getitem__((*sidx, action))
+        values_ = self.policy.Q.__getitem__(sidx_)
+        self.policy.Q.__setitem__(
+            (*sidx, action),
+            value + self.lr * (reward + self.gamma * np.max(values_) - value)
+        )
+    
+    def run_episode(self, i_episode):
+        state = self.env.reset()
+        reward_list = []
+        n_steps = 0
+        while True:
+            if self.render == True or (i_episode >= self.render and self.render != False):
+                self.env.render()
+            action = self.policy.compute_action(state)
+            state_, real_reward, done, _ = self.env.step(action)
+            reward_list.append(real_reward)
+            reward = real_reward + self._shaping_reward(state_, state, i_episode)
+            self.learn(state, action, reward, state_)
+            state = state_
+            n_steps += 1
+            if done or n_steps == 200:
+                reward_list = np.array(reward_list)
+                return {
+                    "sum_reward": np.sum(reward_list),
+                    "mean_reward": np.mean(reward_list),
+                    "max_reward": np.max(reward_list),
+                    "min_reward": np.min(reward_list)
+                }
 
 
 class QLearningAgent(threading.Thread):
@@ -36,6 +107,7 @@ class QLearningAgent(threading.Thread):
             self.Q = self.get_init_q_table()
         else:
             self.Q = np.load(recover)
+        self.writer = SummaryWriter(f"log/{self.name}/{datetime.now()}/".replace(":", "-").replace(" ", "-"))
 
     def get_init_q_table(self):
         raise NotImplementedError
@@ -84,34 +156,36 @@ class QLearningAgent(threading.Thread):
             for assist in self.assistants:
                 assist.run_episode(i_episode)
         state = self.env.reset()
-        sum_real_reward = 0
+        reward_list = []
         n_steps = 0
         while True:
             if self.render == True or (i_episode >= self.render and self.render != False):
                 self.env.render()
             action = self.action(state, random=self.training)
             state_, real_reward, done, _ = self.env.step(action)
-            sum_real_reward += real_reward
+            reward_list.append(real_reward)
             if self.training:
-                reward = real_reward / 2 + self.shaping(state_, state)
+                reward = real_reward + self.shaping(state_, state) / (0.001 * i_episode + 0.1)
                 # reward = self.shaping(state_, state)
                 self.learn(state, action, reward, state_)
             state = state_
             n_steps += 1
             if done or n_steps == 200:
-                return sum_real_reward
-
+                return {
+                    "sum_reward": np.sum(reward_list),
+                    "mean_reward": np.mean(reward_list),
+                    "max_reward": np.max(reward_list),
+                    "min_reward": np.min(reward_list)
+                }
+            
     def run(self):
-        real_rewards = []
         os.makedirs("rewards", exist_ok=True)
         pbar = tqdm.tqdm(total=self.episodes)
         for i_episode in range(self.episodes):
-            sum_reward = self.run_episode(i_episode)
-            real_rewards.append(sum_reward)
+            result = self.run_episode(i_episode)
+            for key, value in result.items():
+                self.writer.add_scalar(f"reward/{key}", value, i_episode)
             pbar.update()
-            if i_episode > 0 and i_episode % 100 == 0:
-                np.save(f"rewards/rewards.{self.name}{'' if self.training else '-test'}.npy", np.array(real_rewards))
-                self.save()
 
     def save(self):
         os.makedirs("q_tables", exist_ok=True)
@@ -185,7 +259,7 @@ class MountainCarAgent(QLearningAgent):
         def compute_energy(s):
             kinetic = s[1] * s[1] / 0.0098
             gravity = (self.env._height(s[0]) - 0.1) / 0.9 - 0.5
-            return (kinetic + gravity) / 2
+            return kinetic + gravity
         # compute_energy = lambda s: 1/2 * s[1] * s[1] + self.env.gravity * self.env._height(s[0])
         return compute_energy(state_) - compute_energy(state)
     
