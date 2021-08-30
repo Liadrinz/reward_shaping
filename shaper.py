@@ -39,8 +39,8 @@ class MountainCarAssistantShaper(Shaper):
         rs = 0
         for assist_agent in self.assist_agents:
             compute_v = lambda avs: np.mean(assist_agent.policy.epsilon * avs) + (1 - assist_agent.policy.epsilon) * np.max(avs)
-            action_values_ = assist_agent.policy.Q[assist_agent.env_wrapper.state_to_index(state_)]
-            action_values = assist_agent.policy.Q[assist_agent.env_wrapper.state_to_index(state)]
+            action_values_ = assist_agent.policy.Q[state_]
+            action_values = assist_agent.policy.Q[state]
             v_ = compute_v(action_values_)
             v = compute_v(action_values)
             rs += (v_ - v)
