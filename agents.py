@@ -13,7 +13,7 @@ class Agent(object):
 
     def __init__(self,
                  name: str,
-                 env: Env,\
+                 env: Env,
                  policy: Policy,
                  shaper: Shaper = None,
                  gamma=0.9,

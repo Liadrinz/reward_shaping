@@ -1,5 +1,5 @@
 from copy import deepcopy
-from networks import DQN
+from networks import DQN, PolicyNet
 import numpy as np
 import torch
 
@@ -20,6 +20,26 @@ class Policy(object):
     
     def restore(self, path):
         raise NotImplementedError
+
+
+class CommonPolicy(Policy):
+
+    def __init__(self, env, in_channels, n_actions):
+        super().__init__(env)
+        self.in_channels = in_channels
+        self.n_actions = n_actions
+        self.policy_net = PolicyNet(in_channels, n_actions)
+    
+    def save(self, path):
+        torch.save(self.policy_net.state_dict(), path)
+    
+    def restore(self, path):
+        self.policy_net.load_state_dict(torch.load(path))
+    
+    def compute_action(self, state):
+        probs = self.policy_net.forward(state)
+        probs = probs.detach().numpy()
+        return np.random.choice(len(probs), p=probs)
 
 
 class QPolicy(Policy):
@@ -58,7 +78,7 @@ class EpsilonGreedyQPolicy(QPolicy):
 
 class DQNPolicy(Policy):
 
-    def __init__(self, env, in_channels, n_actions):
+    def __init__(self, env, in_channels, n_actions, DQN_type=DQN):
         super().__init__(env)
         self.in_channels = in_channels
         self.n_actions = n_actions
@@ -76,8 +96,8 @@ class DQNPolicy(Policy):
 
 class EpsilonGreedyDQNPolicy(DQNPolicy):
 
-    def __init__(self, env, in_channels, n_actions, epsilon=0.01):
-        super().__init__(env, in_channels, n_actions)
+    def __init__(self, env, in_channels, n_actions, epsilon=0.01, DQN_type=DQN):
+        super().__init__(env, in_channels, n_actions, DQN_type)
         self.epsilon = epsilon
         
     

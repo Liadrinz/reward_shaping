@@ -94,3 +94,17 @@ class MountainCarWrapper(gym.Wrapper):
     def reset(self):
         s = super().reset()
         return self._discretize(s)
+
+
+class DQNMountainCarWrapper(gym.Wrapper):
+    
+    def __init__(self, env, discrete_num=100):
+        super().__init__(env)
+        self.env = env
+    
+    def step(self, action):
+        s_, r, done, info = super().step(action)
+        return torch.tensor(s_).float(), r, done, info
+    
+    def reset(self):
+        return torch.tensor(super().reset()).float()
