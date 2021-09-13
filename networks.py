@@ -3,6 +3,24 @@ import torch.nn as nn
 import numpy as np
 
 
+class FCDQN(nn.Module):
+
+    def __init__(self, n_states, n_actions):
+        super().__init__()
+        self.n_states = n_states
+        self.n_actions = n_actions
+        self.fc1 = nn.Linear(n_states, 50)
+        self.fc1.weight.data.normal_(0, 0.1)   # initialization
+        self.out = nn.Linear(50, n_actions)
+        self.out.weight.data.normal_(0, 0.1)   # initialization
+    
+    def forward(self, x):
+        x = self.fc1(x)
+        x = torch.relu(x)
+        actions_value = self.out(x)
+        return actions_value
+
+
 class DQN(nn.Module):
 
     def __init__(self, in_channels, num_actions):
@@ -23,4 +41,16 @@ class DQN(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
+        return x
+
+
+class PolicyNet(DQN):
+
+    def __init__(self, in_channels, num_actions):
+        super().__init__(in_channels, num_actions)
+        self.softmax = nn.Softmax(dim=1)
+    
+    def forward(self, x):
+        x = super().forward(x)
+        x = self.softmax(x)
         return x

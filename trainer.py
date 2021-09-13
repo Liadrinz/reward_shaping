@@ -29,15 +29,17 @@ class Trainer(threading.Thread):
 
 class AssistantsTrainer(Trainer):
 
-    def __init__(self, name: str, main_agent: Agent, assist_agents: List[Agent], episodes: str):
+    def __init__(self, name: str, main_agent: Agent, assist_agents: List[Agent], episodes: str, freeze_assistants=False):
         super().__init__(name, main_agent, episodes)
         self.assist_agents = assist_agents
+        self.freeze_assistants = freeze_assistants
 
     def run(self):
         pbar = tqdm.tqdm(total=self.episodes)
         for i_episode in range(self.episodes):
-            for assist_agent in self.assist_agents:
-                assist_agent.run_episode(i_episode)
+            if not self.freeze_assistants:
+                for assist_agent in self.assist_agents:
+                    assist_agent.run_episode(i_episode)
             result = self.agent.run_episode(i_episode)
             for key, value in result.items():
                 self.writer.add_scalar(f"reward/{key}", value, i_episode)
