@@ -11,16 +11,37 @@ class DQN(nn.Module):
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2)
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1)
 
-        self.fc1 = nn.Linear(in_features=6*9*64, out_features=512)
+        self.fc1 = nn.Linear(in_features=64, out_features=512)
         self.fc2 = nn.Linear(in_features=512, out_features=num_actions)
 
         self.relu = nn.ReLU()
     
-    def forward(self, x):
+    def feature(self, x):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
         x = x.view(x.size(0), -1)
+        return x
+    
+    def forward(self, x):
+        x = self.feature(x)
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+
+class DuelingDQN(DQN):
+
+    def __init__(self, in_channels, num_actions):
+        super().__init__(in_channels, num_actions)
+
+        self.fc3 = nn.Linear(in_features=7*7*64, out_features=512)
+        self.fc4 = nn.Linear(in_features=512, out_features=1)
+
+    def forward(self, x):
+        x = self.feature(x)
+        xa = self.relu(self.fc1(x))
+        xa = self.fc2(xa)
+        xv = self.relu(self.fc3(x))
+        xv = self.fc4(xv)
+        return xa + xv

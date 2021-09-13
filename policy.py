@@ -63,6 +63,7 @@ class DQNPolicy(Policy):
         self.in_channels = in_channels
         self.n_actions = n_actions
         self.eval_net = DQN(in_channels, n_actions)
+        self.eval_net.cuda()
         self.target_net = deepcopy(self.eval_net)
 
     def save(self, path):
@@ -83,7 +84,7 @@ class EpsilonGreedyDQNPolicy(DQNPolicy):
     def compute_action(self, state):
         values = self.eval_net.forward(state)
         if type(values) == torch.Tensor:
-            values = values.detach().numpy()
+            values = values.cpu().detach().numpy()
         if np.random.random() > self.epsilon:
             max_actions = np.where(values == np.max(values))[0]
             res = np.random.choice(max_actions)

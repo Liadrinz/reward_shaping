@@ -17,13 +17,14 @@ class Trainer(threading.Thread):
         self.agent = agent
         self.episodes = episodes
         self.writer = SummaryWriter(f"log/{self.name}/{datetime.now()}/".replace(":", "-").replace(" ", "-"))
+        self.time_steps = 0
     
     def run(self):
         pbar = tqdm.tqdm(total=self.episodes)
         for i_episode in range(self.episodes):
-            result = self.agent.run_episode(i_episode)
-            for key, value in result.items():
-                self.writer.add_scalar(f"reward/{key}", value, i_episode)
+            n_steps, sum_reward = self.agent.run_episode(i_episode)
+            self.time_steps += n_steps
+            self.writer.add_scalar(f"reward", sum_reward, self.time_steps)
             pbar.update()
     
 
@@ -38,7 +39,7 @@ class AssistantsTrainer(Trainer):
         for i_episode in range(self.episodes):
             for assist_agent in self.assist_agents:
                 assist_agent.run_episode(i_episode)
-            result = self.agent.run_episode(i_episode)
-            for key, value in result.items():
-                self.writer.add_scalar(f"reward/{key}", value, i_episode)
+            n_steps, sum_reward = self.agent.run_episode(i_episode)
+            self.time_steps += n_steps
+            self.writer.add_scalar(f"reward", sum_reward, self.time_steps)
             pbar.update()

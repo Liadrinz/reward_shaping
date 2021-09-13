@@ -1,3 +1,4 @@
+from copy import deepcopy
 import torch
 from torch import nn
 from exp_pool import ExpPool
@@ -44,6 +45,10 @@ class QAgent(Agent):
                  lr=1,
                  render=False):
         super().__init__(name, env, policy, shaper, gamma, lr, render)
+        self._loss = 0
+    
+    def get_loss(self):
+        return self._loss
 
     def _shaping_reward(self, state_, state, i_episode):
         if self.shaper is not None:
@@ -51,37 +56,35 @@ class QAgent(Agent):
         return 0
     
     def learn(self, state, action, reward, state_):
+        compute_v = lambda avs: np.mean(self.policy.epsilon * avs) + (1 - self.policy.epsilon) * np.max(avs)
         sidx = state
         sidx_ = state_
-        value = self.policy.Q.__getitem__((*sidx, action))
+        values = self.policy.Q.__getitem__((*sidx, action))
         values_ = self.policy.Q.__getitem__(sidx_)
+        update = self.lr * (reward + self.gamma * np.max(values_) - values)
         self.policy.Q.__setitem__(
             (*sidx, action),
-            value + self.lr * (reward + self.gamma * np.max(values_) - value)
+            values + update
         )
+        update_v = self.lr * (reward + self.gamma * compute_v(values_) - compute_v(values))
+        return update_v
     
     def run_episode(self, i_episode):
         state = self.env.reset()
-        reward_list = []
+        sum_reward = 0
         n_steps = 0
         while True:
             if self.render == True or (i_episode >= self.render and self.render != False):
                 self.env.render()
             action = self.policy.compute_action(state)
             state_, real_reward, done, _ = self.env.step(action)
-            reward_list.append(real_reward)
+            sum_reward += real_reward
             reward = real_reward + self._shaping_reward(state_, state, i_episode)
-            self.learn(state, action, reward, state_)
+            self._loss = self.learn(state, action, reward, state_)
             state = state_
             n_steps += 1
             if done:
-                reward_list = np.array(reward_list)
-                return {
-                    "sum_reward": np.sum(reward_list),
-                    "mean_reward": np.mean(reward_list),
-                    "max_reward": np.max(reward_list),
-                    "min_reward": np.min(reward_list)
-                }
+                return n_steps, sum_reward
 
 
 class DQNAgent(QAgent):
