@@ -21,5 +21,5 @@ env4 = MountainCarWrapper(gym.make("MountainCar-v0"))
 policy4 = EpsilonGreedyQPolicy(env4, (100, 100), 3, epsilon=0.01)
 agent4 = QAgent("mc", env4, policy4, MountainCarAssistantShaper(env4, [agent2, agent3]))
 
-# Trainer("baseline", agent1, 100000).start()
+Trainer("baseline", agent1, 100000).start()
 AssistantsTrainer("co1", agent4, [agent2, agent3], 100000).start()

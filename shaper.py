@@ -34,6 +34,11 @@ class MountainCarAssistantShaper(Shaper):
         self.energy_shaper = MountainCarEnergyShaper(env)
         self.assist_agents = assist_agents
         self.gamma = gamma
+        self.global_n = 1
+        self.global_loss = 0
+        self.global_rs = 0
+        self.global_correct = 0
+        self.global_eps = 0
     
     def shaping_reward(self, state_, state, i_episode):
         rs = 0
@@ -44,5 +49,14 @@ class MountainCarAssistantShaper(Shaper):
             action_values = assist_agent.policy.Q[state[0] // ratio, state[1] // ratio]
             v_ = compute_v(action_values_)
             v = compute_v(action_values)
+            loss = assist_agent.get_loss()
+            delta = (loss - self.global_loss) / self.global_n
+            self.global_loss += delta
+            self.global_n += 1
             rs += (v_ - v)
+            self.global_correct += loss / 10000
+            self.global_rs += (v_ - v)
+        if i_episode % 100 == 0 and i_episode > self.global_eps:
+            print(self.global_rs, self.global_correct)
+            self.global_eps = i_episode
         return rs

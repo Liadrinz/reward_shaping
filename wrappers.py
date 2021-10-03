@@ -6,6 +6,28 @@ import torch.nn as nn
 from collections import deque
 
 
+class TensorWrapper(gym.Wrapper):
+
+    def __init__(self, env):
+        super().__init__(env)
+        self.step_counter = 0
+    
+    def _pipeline(self, data: np.ndarray) -> torch.Tensor:
+        data = torch.tensor(data)
+        h, w, c = data.shape[-3:]
+        data = data.view(-1, c, h, w).to(torch.float32).cuda()
+        return data
+
+    def reset(self):
+        self.step_counter = 0
+        return self._pipeline(super().reset())
+    
+    def step(self, action):
+        s_, r, done, info = super().step(action)
+        self.step_counter += 1
+        return self._pipeline(s_), r, done, info
+
+
 class AtariWrapper(gym.Wrapper):
 
     def __init__(self, env=None, skip=4):

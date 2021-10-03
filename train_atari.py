@@ -1,13 +1,15 @@
 import numpy as np
 from exp_pool import ExpPool
 import gym
-from wrappers import AtariWrapper
 from policy import EpsilonGreedyDQNPolicy
 from agents import DQNAgent
 from trainer import Trainer
+from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind
+from wrappers import TensorWrapper
 
-env = AtariWrapper(gym.make("Breakout-v0"))
-policy = EpsilonGreedyDQNPolicy(env, 3, env.action_space.n, epsilon=0.01)
-exp_pool = ExpPool(2000, env.observation_space.shape)
-agent = DQNAgent("breakout", env, policy, exp_pool, 32, 100)
-Trainer("baseline", agent, 10000).start()
+env = TensorWrapper(wrap_deepmind(gym.make("BreakoutNoFrameskip-v4"), dim=42))
+policy = EpsilonGreedyDQNPolicy(env, 4, env.action_space.n, epsilon=0.01)
+h, w, c = env.observation_space.shape
+exp_pool = ExpPool(10000, (c, h, w))
+agents = DQNAgent("breakout", env, policy, exp_pool, 200, 100)
+Trainer("baseline", agents, 10000).start()
